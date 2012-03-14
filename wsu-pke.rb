@@ -75,7 +75,39 @@ module ModMath
 	end
 end
 
+# Generate a safe prime, see RFC 4419
+def generate_safe_prime(generator=2)
+	p = 0
+	until p.prime? and p.to_s(2).length >= 32 do
+		q = 0
+		# 4294967298 = 2^32
+		q = rand(4294967296) until q.to_i.prime? and q % 12 == 5 
+		p = generator * q + 1
+	end
+	return p
+end
 
+# Generate a public/private key pair
+def generate_key_pair
+	g = 2
+	p = generate_safe_prime(g)
+	d = rand(p)
+	e2 = ModMath.pow(g, d, p)
+
+	public_key = [p, g, e2]
+	private_key = [p, g, d]
+
+	return public_key, private_key
+end
+
+def get_random_seed
+	seed = 0
+	until seed > 0 do
+		puts "Please enter a number"
+		seed = STDIN.gets.to_i
+	end
+	srand(seed)
+end
 
 $debug = false
 encrypt = false
@@ -97,6 +129,7 @@ ARGV.size.times do |i|
 	key_file = ARGV[i] if i+1 == ARGV.size - 1
 	pt_file = ARGV[i] if i+1 == ARGV.size
 	if ARGV[i] == "-k"
+		# Seed RNG
 		encrypt = false
 		keygen = true
 	elsif ARGV[i] == "-e"
@@ -110,19 +143,15 @@ ARGV.size.times do |i|
 	$debug = true if ARGV[i] == "--debug"
 end
 
-def generate_safe_prime
-	p = 0
-	until p.prime? do
-		q = 0
-		# 4294967298 = 2^32
-		q = rand(4294967296) until q.to_i.prime? and q % 12 == 5 
-		p = 2 * q + 1
-	end
-	return p
-end
-
 # Read input file text
-unless keygen
+
+if keygen
+	get_random_seed
+	keys = generate_key_pair
+	File.open("pubkey.txt", 'w') {|f| f.write("#{keys[0][0]} #{keys[0][1]} #{keys[0][2]}")}
+	File.open("prikey.txt", 'w') {|f| f.write("#{keys[1][0]} #{keys[1][1]} #{keys[1][2]}")}
+	exit
+else
 	plaintext = File.open(pt_file, 'rb') { |f| f.read.unpack('B*')[0] } 
 	keytext = File.open(key_file, 'rb') { |f| f.read.unpack('B64')[0] } 
 end
@@ -138,3 +167,4 @@ puts 13.prime?
 puts rand(1000000)
 p = generate_safe_prime
 puts "p: #{p} : num_bits = #{p.to_s(2).length}"
+puts generate_key_pair
