@@ -1,5 +1,7 @@
 #!/usr/bin/env ruby
 
+BLOCK_SIZE = 32
+
 def print_usage
 	print "Usage: wsu-pke [OPTION]... [-k|-e|-d] FILE1 FILE2\n"
 	print "Encrypt or Decrypt FILE2 with a key of FILE1 to standard output"
@@ -10,7 +12,7 @@ def print_usage
 	print "\n\t--debug\tDisplay debug text to stdout"
 	print "\n\t--help\t\t\tDisplay this help and exit"
 	print "\n\t--version\t\tOutput version information end exit"
-	print "\n\nExamples:\n\twsu-crypt --debug -e keyfile plaintextfile"
+	print "\n\nExamples:\n\twsu-pke --debug -e keyfile plaintextfile"
 	print "\n\twsu-pke -d keyfile cipherfile"
 	print "\n\nReport bugs to skylarhiebert@computer.org\n"
 	exit
@@ -42,7 +44,7 @@ class Integer
 
 		# cf. http://betterexplained.com/articles/another-look-at-prime-numbers/ and
 		# http://everything2.com/index.pl?node_id=1176369
-
+		#
 		return false if n > 3 && n % 6 != 1 && n % 6 != 5     # added
 
 		d = n-1
@@ -61,6 +63,8 @@ class Integer
 	end
 end
 
+# Used this implementation as it benchmarked much 
+# faster than my own implementation
 # Implementation for Square-Multiply
 # http://snippets.dzone.com/posts/show/4636
 module ModMath
@@ -78,10 +82,12 @@ end
 # Generate a safe prime, see RFC 4419
 def generate_safe_prime(generator=2)
 	p = 0
-	until p.prime? and p.to_s(2).length >= 32 do
+	# Create a 33 bit prime number for modulo
+	# This allows us to work with 32-bit block sizes
+	until p.prime? and p.to_s(2).length > BLOCK_SIZE do
 		q = 0
-		# 4294967298 = 2^32
-		q = rand(4294967296) until q.to_i.prime? and q % 12 == 5 
+		# 4294967296 = 2^32 
+		q = rand(2**BLOCK_SIZE) until q.to_i.prime? and q % 12 == 5 
 		p = generator * q + 1
 	end
 	return p
@@ -107,6 +113,31 @@ def get_random_seed
 		seed = STDIN.gets.to_i
 	end
 	srand(seed)
+end
+
+# Encrypts a block and returns integer values for
+# C1 and C2
+def encrypt_block(block, key) 
+	# key[0] = p, key[1] = g, key[2] = e2
+	k = rand(key[0] - 1)
+	c1 = ModMath.pow(key[1], k, key[0])
+	# c2 = ((e2^k % p) * (m % p)) % p
+	c2 = (ModMath.pow(key[2], k, key[0]) * ModMath.pow(block, 1, key[0])) % key[0]
+	return c1, c2
+end
+
+# Decrypts C1 and C2 into a binary block
+def decrypt_block(c1, c2, key)
+	# key[0] = p, key[1] = g, key[2] = d
+	# Exponent = p - 1 - d
+	exp = key[0] - key[2] - 1
+	# m = (c1^exp * c2) % p
+	# m = ((c1^exp % p ) * (c2 % p) % p
+	blk = (ModMath.pow(c1, exp, key[0]) * ModMath.pow(c2, 1, key[0])) % key[0]
+	blk = blk.to_s(2)
+	# Prepend 0's until the block is appropriately sized
+	blk.insert(0, '0') until blk.size == BLOCK_SIZE
+	return blk
 end
 
 $debug = false
@@ -151,20 +182,39 @@ if keygen
 	File.open("pubkey.txt", 'w') {|f| f.write("#{keys[0][0]} #{keys[0][1]} #{keys[0][2]}")}
 	File.open("prikey.txt", 'w') {|f| f.write("#{keys[1][0]} #{keys[1][1]} #{keys[1][2]}")}
 	exit
-else
-	plaintext = File.open(pt_file, 'rb') { |f| f.read.unpack('B*')[0] } 
-	keytext = File.open(key_file, 'rb') { |f| f.read.unpack('B64')[0] } 
 end
-	srand(Time.now.to_i)
-puts "Keygen" if keygen
-puts "Encrypt" if encrypt and !keygen
-puts "Decrypt" if !encrypt and !keygen
-t = Time.now
-puts "#{power(1234, 4856) % 124} ran in #{Time.now - t} seconds"
-t = Time.now
-puts "#{ModMath.pow(1234, 4856, 124)} ran in #{Time.now - t} seconds"
-puts 13.prime?
-puts rand(1000000)
-p = generate_safe_prime
-puts "p: #{p} : num_bits = #{p.to_s(2).length}"
-puts generate_key_pair
+
+keys = File.open(key_file, 'rb') { |f| f.read.split }	
+
+# Convert keys from string to integers
+0.upto(keys.length) { |i| keys[i] = keys[i].to_i }
+
+if encrypt
+	puts "Encrypt" 
+	plaintext = File.open(pt_file, 'rb') { |f| f.read.unpack('B*')[0] } 
+	cipher = ""
+	0.upto(plaintext.size / BLOCK_SIZE) do |i|
+		blk = plaintext[i*BLOCK_SIZE, BLOCK_SIZE] unless plaintext[i*BLOCK_SIZE].nil?
+		unless blk.nil?
+			blk << '0' until blk.size == BLOCK_SIZE
+			cblk = encrypt_block(blk.to_i(2), keys)
+			cipher += "#{cblk[0]} #{cblk[1]} "
+		end
+	end
+	puts cipher
+	File.open("ctext.txt", 'w') { |f| f.write(cipher) }
+else
+	puts "Decrypt"
+	ciphertext = File.open(pt_file, 'rb') { |f| f.read.split }
+	plaintext = Array.new
+	plaintext[0] = ""
+	0.upto(ciphertext.size / 2) do |i|
+		index = i * 2
+		blk = decrypt_block(ciphertext[index].to_i, ciphertext[index+1].to_i, keys)
+		plaintext[0] << blk
+	end
+	
+	puts plaintext.pack('B*')
+	File.open("dtext.txt", 'w') { |f| f.write(plaintext.pack('B*')) }
+end
+

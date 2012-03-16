@@ -1,0 +1,27 @@
+Copyright (c) 2012 Skylar Hiebert
+
+wsu-pke is a public-key cryptosystem based on the RSA public-key cryptosystem as described by Dr. Sarah Mocas as an assignment for CS 427 - Computer Security at Washington State University Vancouver. 
+
+The program will generate public/private keyfiles, encrypt a given plaintext file using provided public keyfile, or decrypt a given ciphertext file using provided private keyfile.
+
+Usage: wsu-pke [OPTION]... [-k|-e|-d] FILE1 FILE2
+Encrypt or Decrypt FILE2 with a key of FILE1 to standard output
+	Default method is encryption
+
+	-e	Encrypt FILE1 with key FILE2
+	-d	Decrypt FILE1 with key FILE2
+	-h			Output text to hexidecimal representations
+	--debug	Display debug text to stdout
+	--help			Display this help and exit
+	--version		Output version information end exit
+
+Examples:
+	wsu-pke --debug -e keyfile plaintextfile
+	wsu-pke -d keyfile cipherfile
+
+Report bugs to skylarhiebert@computer.org
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
